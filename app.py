@@ -35,17 +35,17 @@ def handle_message(event):
     user_id = event.source.user_id
 
     try:
-        if text.startswith("喝奶"):
+        if "喝奶" in text:
             value = text.replace("喝奶", "").strip()
             save_record(user_id, "feeding", value)
             reply = f"🍼 已記錄喝奶：{value}"
 
-        elif text.startswith("睡眠"):
+        elif "睡眠" in text:
             value = text.replace("睡眠", "").strip()
             save_record(user_id, "sleep", value)
             reply = f"😴 已記錄睡眠：{value}"
 
-        elif text.startswith("換尿布"):
+        elif "換尿布" in text:
             value = text.replace("換尿布", "").strip()
             save_record(user_id, "diaper", value)
             reply = f"👶 已記錄換尿布：{value}"

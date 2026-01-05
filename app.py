@@ -12,8 +12,13 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-@app.route("/callback", methods=["POST"])
+@app.route("/callback", methods=["GET", "POST"])
 def callback():
+    # 給 LINE Verify 用（GET）
+    if request.method == "GET":
+        return "OK"
+
+    # 真正接收訊息用（POST）
     signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
 
@@ -23,7 +28,6 @@ def callback():
         abort(400)
 
     return "OK"
-
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):

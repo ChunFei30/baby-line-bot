@@ -1,3 +1,4 @@
+print("🔥 RENDER IS RUNNING APP.PY - FINAL CONFIRM 🔥")
 print("🔥 LINE BABY BOT START 🔥")
 
 from flask import Flask, request, abort

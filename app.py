@@ -34,6 +34,8 @@ def handle_message(event):
     text = event.message.text.strip()
     user_id = event.source.user_id
 
+    print("📩 收到文字：", repr(text))
+
     try:
         if "喝奶" in text:
             value = text.replace("喝奶", "").strip()

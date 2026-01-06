@@ -1,3 +1,49 @@
+# ===== import =====
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+import os
+import re
+
+from db import init_db, save_record
+
+# ===== app & LINE init =====
+app = Flask(__name__)
+
+line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+
+# ===== DB init =====
+init_db()
+
+print("🔥 THIS IS THE NEW APP.PY 🔥")
+
+# ===== basic routes =====
+@app.route("/")
+def index():
+    return "LINE BABY BOT IS RUNNING"
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+# ===== LINE callback =====
+@app.route("/callback", methods=["POST"])
+def callback():
+    signature = request.headers.get("X-Line-Signature")
+    body = request.get_data(as_text=True)
+
+    print("📩 CALLBACK:", body)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return "OK"
+
+# ===== LINE message handler (ONLY ONE) =====
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
@@ -9,7 +55,7 @@ def handle_message(event):
     # 😴 睡眠 2小時 / 1.5小時
     sleep_match = re.match(r"睡眠\s*(\d+(\.\d+)?)\s*小時", text)
 
-    # 💩 / 🚽 換尿布 大便 / 尿尿
+    # 👶 換尿布 大便 / 尿尿
     diaper_match = re.match(r"換尿布\s*(大便|尿尿)", text)
 
     if milk_match:
@@ -38,4 +84,3 @@ def handle_message(event):
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
-    )

@@ -1,3 +1,8 @@
+import sqlite3
+from datetime import datetime
+
+DB_NAME = "baby.db"
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -12,7 +17,6 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-
 
 def save_record(user_id, record_type, record_value):
     conn = sqlite3.connect(DB_NAME)

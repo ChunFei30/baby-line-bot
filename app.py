@@ -138,6 +138,7 @@ def handle_message(event):
             "👶 換尿布 大便 / 尿尿"
         )
 
-    line_bot_api.reply_message()
+    line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
+        )

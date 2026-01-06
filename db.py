@@ -1,31 +1,25 @@
-import sqlite3
-
-DB_PATH = "baby.db"
-
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        line_user_id TEXT,
-        record_type TEXT,
-        value TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            record_type TEXT,
+            record_value TEXT,
+            created_at TEXT
+        )
     """)
-
     conn.commit()
     conn.close()
 
 
-def save_record(line_user_id, record_type, value):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO records (line_user_id, record_type, value) VALUES (?, ?, ?)",
-        (line_user_id, record_type, value)
-    )
+def save_record(user_id, record_type, record_value):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO records (user_id, record_type, record_value, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, record_type, record_value, datetime.now().isoformat()))
     conn.commit()
     conn.close()

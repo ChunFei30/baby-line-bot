@@ -99,7 +99,6 @@ if text == "今天":
         event.reply_token,
         TextSendMessage(text=reply)
     )
-    return
 # ===== LINE message handler (ONLY ONE) =====
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):

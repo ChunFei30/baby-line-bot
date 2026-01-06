@@ -3,6 +3,7 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from db import get_today_records_with_time
 import os
 import re
 
@@ -43,6 +44,62 @@ def callback():
 
     return "OK"
 
+if text == "今天":
+    records = get_today_records_with_time(user_id)
+
+    milk_count = 0
+    milk_total = 0
+    milk_details = []
+
+    sleep_count = 0
+    sleep_total = 0.0
+
+    diaper_total = 0
+    diaper_poop = 0
+    diaper_pee = 0
+
+    for r_type, r_value, r_time in records:
+        time_str = r_time[11:16]  # 取 HH:MM
+
+        if r_type == "milk":
+            milk_count += 1
+            amount = int(r_value.replace("ml", ""))
+            milk_total += amount
+            milk_details.append(f"{time_str}　{amount} ml")
+
+        elif r_type == "sleep":
+            sleep_count += 1
+            sleep_total += float(r_value.replace("小時", ""))
+
+        elif r_type == "diaper":
+            diaper_total += 1
+            if r_value == "大便":
+                diaper_poop += 1
+            elif r_value == "尿尿":
+                diaper_pee += 1
+
+    reply = (
+        "📊 今日寶寶紀錄\n\n"
+        f"🍼 喝奶：{milk_count} 次，共 {milk_total} ml\n"
+    )
+
+    if milk_details:
+        reply += "\n".join(milk_details) + "\n\n"
+    else:
+        reply += "（今天尚未記錄喝奶）\n\n"
+
+    reply += (
+        f"😴 睡眠：{sleep_count} 次，共 {sleep_total:.1f} 小時\n\n"
+        f"👶 換尿布：{diaper_total} 次\n"
+        f"• 大便 {diaper_poop} 次\n"
+        f"• 尿尿 {diaper_pee} 次"
+    )
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply)
+    )
+    return
 # ===== LINE message handler (ONLY ONE) =====
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):

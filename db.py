@@ -27,3 +27,19 @@ def save_record(user_id, record_type, record_value):
     """, (user_id, record_type, record_value, datetime.now().isoformat()))
     conn.commit()
     conn.close()
+
+def get_today_records_with_time(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT record_type, record_value, created_at
+        FROM records
+        WHERE user_id = ?
+        AND date(created_at) = date('now', 'localtime')
+        ORDER BY created_at ASC
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows

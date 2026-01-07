@@ -1,10 +1,9 @@
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FollowEvent
 from datetime import datetime, timedelta
 import os, re
-
 from db import *
 
 app = Flask(__name__)
@@ -14,7 +13,6 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 CRON_SECRET = os.getenv("CRON_SECRET", "123456")
 
 init_db()
-print("🔥 BABY BOT FINAL VERSION WITH HOSPITAL BAG REMINDER 🔥")
 
 @app.route("/")
 def index():
@@ -30,10 +28,27 @@ def callback():
         abort(400)
     return "OK"
 
+# ===== 新好友加入 =====
+@handler.add(FollowEvent)
+def handle_follow(event):
+    user_id = event.source.user_id
+    upsert_user_settings(user_id)
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(
+            text=(
+                "👋 歡迎使用育兒小幫手\n\n"
+                "請先告訴我：\n"
+                "📅 設定生日 YYYY-MM-DD\n"
+                "或\n"
+                "🤰 設定預產期 YYYY-MM-DD"
+            )
+        )
+    )
+
 # ===== 共用文字 =====
 def build_today_summary(user_id):
     records = get_today_records_with_time(user_id)
-
     milk, milk_ml, details = 0, 0, []
     sleep, sleep_hr = 0, 0
     diaper, poop, pee = 0, 0, 0
@@ -60,7 +75,7 @@ def build_today_summary(user_id):
     return text
 
 def build_day_count(user_id):
-    due, birth, _, _ = get_user_settings(user_id)
+    due, birth, *_ = get_user_settings(user_id)
     today = datetime.now().date()
     if birth:
         d = datetime.strptime(birth,"%Y-%m-%d").date()
@@ -70,91 +85,47 @@ def build_day_count(user_id):
         return f"🤰 距離預產期 {(d-today).days} 天"
     return "尚未設定生日或預產期"
 
-# ===== LINE 處理 =====
+# ===== 訊息處理 =====
 @handler.add(MessageEvent, message=TextMessage)
 def handle(event):
     user_id = event.source.user_id
     text = event.message.text.strip()
     upsert_user_settings(user_id)
 
-    # 今天
     if text == "今天":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=build_today_summary(user_id)))
         return
 
-    # 天數
     if text == "天數":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=build_day_count(user_id)))
         return
 
-    # 設定生日
     if m := re.match(r"設定生日 (\d{4}-\d{2}-\d{2})", text):
         upsert_user_settings(user_id, birth_date=m.group(1))
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 已設定生日"))
         return
 
-    # 設定預產期（含待產包提醒）
     if m := re.match(r"設定預產期 (\d{4}-\d{2}-\d{2})", text):
         due_str = m.group(1)
         upsert_user_settings(user_id, due_date=due_str)
-
         due = datetime.strptime(due_str,"%Y-%m-%d")
         remind = due - timedelta(days=60)
-
         if remind > datetime.now():
-            add_reminder(
-                user_id,
-                "hospital_bag",
-                remind.strftime("%Y-%m-%d 09:00:00"),
-                "待產包"
-            )
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    f"✅ 已設定預產期：{due_str}\n\n"
-                    "👜 我會在「預產期前約兩個月」提醒你準備待產包"
-                )
-            )
-        )
+            add_reminder(user_id, "hospital_bag", remind.strftime("%Y-%m-%d 09:00:00"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 已設定預產期"))
         return
 
-    # 喝奶（自動平均）
     if m := re.match(r"喝奶 (\d+)ml", text):
-        amount = m.group(1)
-        save_record(user_id,"milk",f"{amount}ml")
-
-        times = get_last_milk_times(user_id,5)
-        avg = None
-        if len(times)>=2:
-            dts = sorted(datetime.strptime(t,"%Y-%m-%d %H:%M:%S") for t in times)
-            diffs = [(dts[i]-dts[i-1]).seconds/3600 for i in range(1,len(dts))]
-            avg = round(sum(diffs)/len(diffs),1)
-
-        if not avg:
-            _,_,avg,_ = get_user_settings(user_id)
-
-        due = datetime.now()+timedelta(hours=avg)
-        add_reminder(user_id,"feed",due.strftime("%Y-%m-%d %H:%M:%S"),str(avg))
-
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=f"🍼 已記錄 {amount}ml\n📈 平均喝奶間隔 {avg} 小時\n⏰ 我會自動提醒你"
-            )
-        )
+        save_record(user_id, "milk", f"{m.group(1)}ml")
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🍼 已記錄喝奶"))
         return
 
-    # 預設說明
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(
-            text="🍼 喝奶 120ml\n📊 今天\n📅 天數\n設定生日 YYYY-MM-DD\n設定預產期 YYYY-MM-DD"
-        )
+        TextSendMessage(text="🍼 喝奶 120ml\n📊 今天\n📅 天數")
     )
 
-# ===== Cron（提醒 + 每日推播）=====
+# ===== Cron =====
 @app.route("/cron")
 def cron():
     if request.args.get("secret") != CRON_SECRET:
@@ -163,30 +134,30 @@ def cron():
     now = datetime.now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # 提醒處理
     for rid, uid, rtype, payload in get_due_reminders(now_str):
-        if rtype == "feed":
-            msg = f"⏰ 距離上次喝奶約 {payload} 小時囉"
-        elif rtype == "hospital_bag":
-            msg = (
-                "👜 待產包提醒\n\n"
-                "距離預產期剩下約 2 個月囉 🤍\n"
-                "可以開始準備待產包了～\n\n"
-                "👩 媽媽用品\n"
-                "👶 寶寶用品\n"
-                "📄 文件與證件"
-            )
-        else:
-            msg = "⏰ 提醒時間到囉！"
-
+        msg = "⏰ 提醒時間到囉！"
+        if rtype == "hospital_bag":
+            msg = "👜 距離預產期 2 個月，記得準備待產包"
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
         mark_reminder_done(rid)
 
-    # 每天 21:00 今日總結
-    if now.hour==21 and now.minute==0:
+    if now.hour == 9 and now.minute == 0:
         for uid in get_all_user_ids():
-            summary = build_today_summary(uid) + "\n\n" + build_day_count(uid)
-            line_bot_api.push_message(uid, TextSendMessage(text=summary))
-            set_last_daily_push_date(uid, now.strftime("%Y-%m-%d"))
+            , birth, * = get_user_settings(uid)
+            if birth:
+                days = (datetime.now().date() - datetime.strptime(birth,"%Y-%m-%d").date()).days
+                month = days // 30
+                if month > 0 and not has_pushed_month(uid, month):
+                    care = get_monthly_care(month)
+                    if care:
+                        line_bot_api.push_message(uid, TextSendMessage(text=f"📌 寶寶滿 {month} 個月提醒\n\n{care}"))
+                        mark_pushed_month(uid, month)
+
+    if now.hour == 21 and now.minute == 0:
+        for uid in get_all_user_ids():
+            line_bot_api.push_message(
+                uid,
+                TextSendMessage(text=build_today_summary(uid) + "\n\n" + build_day_count(uid))
+            )
 
     return "OK"

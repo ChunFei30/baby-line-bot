@@ -143,7 +143,7 @@ def cron():
 
     if now.hour == 9 and now.minute == 0:
         for uid in get_all_user_ids():
-            , birth, * = get_user_settings(uid)
+            _, birth,_, _ = get_user_settings(uid)
             if birth:
                 days = (datetime.now().date() - datetime.strptime(birth,"%Y-%m-%d").date()).days
                 month = days // 30

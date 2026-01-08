@@ -50,6 +50,13 @@ def init_db():
     )
     """)
 
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS daily_tips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 

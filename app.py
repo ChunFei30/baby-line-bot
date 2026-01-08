@@ -77,20 +77,17 @@ def build_today_summary(user_id):
 
     text = "🌙 今日寶寶小日記\n\n"
 
-    # 🍼 喝奶
     if milk > 0:
         text += f"🍼 今天喝奶 {milk} 次，共 {milk_ml} ml\n"
         text += "\n".join(milk_details) + "\n\n"
     else:
         text += "🍼 今天還沒有記錄喝奶\n\n"
 
-    # 😴 睡眠
     if sleep > 0:
         text += f"😴 睡眠 {sleep} 次，累積約 {sleep_hr:.1f} 小時\n\n"
     else:
         text += "😴 今天還沒有記錄睡眠\n\n"
 
-    # 👶 換尿布
     if diaper > 0:
         text += (
             f"👶 換尿布 {diaper} 次\n"
@@ -125,41 +122,27 @@ def handle_message(event):
     text = event.message.text.strip()
     upsert_user_settings(user_id)
 
-    # 查詢
     if text == "今天":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=build_today_summary(user_id))
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=build_today_summary(user_id)))
         return
 
     if text == "天數":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=build_day_count(user_id))
-        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=build_day_count(user_id)))
         return
 
-    # 設定生日
     if m := re.match(r"設定生日 (\d{4}-\d{2}-\d{2})", text):
         upsert_user_settings(user_id, birth_date=m.group(1))
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 已設定寶寶生日"))
         return
 
-    # 設定預產期（含待產包提醒）
     if m := re.match(r"設定預產期 (\d{4}-\d{2}-\d{2})", text):
         due_str = m.group(1)
         upsert_user_settings(user_id, due_date=due_str)
 
         due = datetime.strptime(due_str, "%Y-%m-%d")
         remind = due - timedelta(days=60)
-
         if remind > datetime.now():
-            add_reminder(
-                user_id,
-                "hospital_bag",
-                remind.strftime("%Y-%m-%d 09:00:00")
-            )
+            add_reminder(user_id, "hospital_bag", remind.strftime("%Y-%m-%d 09:00:00"))
 
         line_bot_api.reply_message(
             event.reply_token,
@@ -167,26 +150,22 @@ def handle_message(event):
         )
         return
 
-    # 🍼 喝奶
     if m := re.match(r"喝奶 (\d+)ml", text):
         save_record(user_id, "milk", f"{m.group(1)}ml")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🍼 已記錄喝奶"))
         return
 
-    # 👶 換尿布
     if text in ["換尿布 大便", "換尿布 尿尿"]:
         value = "大便" if "大便" in text else "尿尿"
         save_record(user_id, "diaper", value)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"👶 已記錄換尿布（{value}）"))
         return
 
-    # 😴 睡眠
     if m := re.match(r"睡眠 (\d+(\.\d+)?)小時", text):
         save_record(user_id, "sleep", f"{m.group(1)}小時")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="😴 已記錄睡眠"))
         return
 
-    # 預設說明
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(
@@ -200,7 +179,7 @@ def handle_message(event):
         )
     )
 
-# ===== Cron（提醒 + 每日總回顧）=====
+# ===== Cron =====
 @app.route("/cron")
 def cron():
     if request.args.get("secret") != CRON_SECRET:
@@ -208,8 +187,9 @@ def cron():
 
     now = datetime.now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    today_str = now.strftime("%Y-%m-%d")
 
-    # 提醒
+    # ⏰ 提醒
     for rid, uid, rtype, payload in get_due_reminders(now_str):
         if rtype == "hospital_bag":
             msg = (
@@ -223,14 +203,34 @@ def cron():
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
         mark_reminder_done(rid)
 
-    # 🌙 每天 21:00 總回顧
+    # 🌞 09:00 育兒知識 + 天數
+    if now.hour == 9 and now.minute == 0:
+        for uid in get_all_user_ids():
+            _, _, _, last_push, _ = get_user_settings(uid)
+            if last_push == today_str:
+                continue
+
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute("SELECT content FROM daily_tips ORDER BY RANDOM() LIMIT 1")
+            row = c.fetchone()
+            conn.close()
+
+            msg = "🌞 早安，今天也一起溫柔地照顧寶寶 🤍\n\n"
+            msg += build_day_count(uid)
+
+            if row:
+                msg += "\n\n👶 今日育兒小提醒\n" + row[0]
+
+            line_bot_api.push_message(uid, TextSendMessage(text=msg))
+            set_last_daily_push_date(uid, today_str)
+
+    # 🌙 21:00 今日總回顧
     if now.hour == 21 and now.minute == 0:
         for uid in get_all_user_ids():
             line_bot_api.push_message(
                 uid,
-                TextSendMessage(
-                    text=build_today_summary(uid) + "\n\n" + build_day_count(uid)
-                )
+                TextSendMessage(text=build_today_summary(uid) + "\n\n" + build_day_count(uid))
             )
 
     return "OK"

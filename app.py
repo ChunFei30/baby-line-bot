@@ -225,8 +225,8 @@ def cron():
             line_bot_api.push_message(uid, TextSendMessage(text=msg))
             set_last_daily_push_date(uid, today_str)
 
-    # 🌙 21:00 今日總回顧
-    if now.hour == 21 and now.minute == 0:
+    # 🌙 22:15 今日總回顧
+    if now.hour == 22 and now.minute == 15:
         for uid in get_all_user_ids():
             line_bot_api.push_message(
                 uid,

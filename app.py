@@ -129,24 +129,8 @@ def handle_message(event):
 # ===== Cron =====
 @app.route("/cron")
 def cron():
-    if request.args.get("secret") != CRON_SECRET:
-        return "forbidden",403
-
-    now = datetime.now()
-
-    # 🌱 09:00 每日育兒知識
-    if now.hour == 9 and now.minute == 0:
-        for uid in get_all_user_ids():
-            tip = get_random_daily_tip()
-            msg = f"🌱 今日育兒小提醒\n\n{tip}\n\n{build_day_count(uid)}"
-            line_bot_api.push_message(uid, TextSendMessage(text=msg))
-
-    # 🌙 21:00 總回顧
-    if now.hour == 21 and now.minute == 0:
-        for uid in get_all_user_ids():
-            line_bot_api.push_message(
-                uid,
-                TextSendMessage(text=build_today_summary(uid))
-            )
-
+    line_bot_api.push_message(
+        "你的_USER_ID",
+        TextSendMessage(text="🔥 Cron 測試成功，我主動說話了！")
+    )
     return "OK"

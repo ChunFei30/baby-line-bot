@@ -126,19 +126,62 @@ def handle_message(event):
 
     upsert_user_settings(user_id)
 
-    if text == "今天":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=build_today_summary(user_id))
-        )
-        return
+    reply = None
 
-    if text == "天數":
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=build_day_count(user_id))
+    # ===== 設定生日 =====
+    m_birth = re.match(r"設定生日\s*(\d{4}-\d{2}-\d{2})", text)
+    if m_birth:
+        birth = m_birth.group(1)
+        due, old_birth = get_user_settings(user_id)
+
+        set_birth_date(user_id, birth)
+
+        if old_birth == birth:
+            reply = f"ℹ️ 你已經設定過寶寶生日是 {birth} 囉 🤍"
+        else:
+            reply = (
+                f"🎂 已幫你設定寶寶生日為 {birth}\n\n"
+                "之後我會依月齡提醒你重要發展與照顧重點 💛"
+            )
+
+    # ===== 設定預產期 =====
+    m_due = re.match(r"設定預產期\s*(\d{4}-\d{2}-\d{2})", text)
+    if reply is None and m_due:
+        due = m_due.group(1)
+        old_due, birth = get_user_settings(user_id)
+
+        set_due_date(user_id, due)
+
+        if old_due == due:
+            reply = f"ℹ️ 你已經設定過預產期是 {due} 囉 🤍"
+        else:
+            reply = (
+                f"🤰 已幫你設定預產期為 {due}\n\n"
+                "我會在孕期一路陪你準備迎接寶寶 🌙"
+            )
+
+    # ===== 快捷指令 =====
+    if reply is None and text == "今天":
+        reply = build_today_summary(user_id)
+
+    if reply is None and text == "天數":
+        reply = build_day_count(user_id)
+
+    # ===== 預設回覆（保證不已讀不回）=====
+    if reply is None:
+        reply = (
+            "👋 我在這裡陪你 🤍\n\n"
+            "你可以輸入：\n"
+            "📅 設定生日 YYYY-MM-DD\n"
+            "🤰 設定預產期 YYYY-MM-DD\n"
+            "🍼 今天\n"
+            "📆 天數"
         )
-        return
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply)
+    )
 
 # =========================
 # ⭐ CRON 主動推播（台灣時間）
@@ -152,15 +195,12 @@ def cron():
     if not users:
         return "no users"
 
-    # ⏰ Render 是 UTC，要轉成台灣時間
     now = datetime.utcnow() + timedelta(hours=8)
     now_hour = now.hour
-
     pushed = 0
 
     for user_id in users:
         try:
-            # ☀️ 早上 9 點
             if now_hour == 9:
                 msg = (
                     "☀️ 早安，辛苦的你 🤍\n\n"
@@ -170,7 +210,6 @@ def cron():
                 line_bot_api.push_message(user_id, TextSendMessage(text=msg))
                 pushed += 1
 
-            # 🌙 晚上 9 點
             elif now_hour == 21:
                 msg = build_today_summary(user_id)
                 line_bot_api.push_message(user_id, TextSendMessage(text=msg))

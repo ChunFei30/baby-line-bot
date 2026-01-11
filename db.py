@@ -17,7 +17,9 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # 紀錄表
+    # =========================
+    # 紀錄表（喝奶 / 睡眠 / 尿布）
+    # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +30,9 @@ def init_db():
     )
     """)
 
+    # =========================
     # 使用者設定
+    # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS user_settings (
         user_id TEXT PRIMARY KEY,
@@ -40,7 +44,9 @@ def init_db():
     )
     """)
 
+    # =========================
     # 提醒（未來用）
+    # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS reminders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +58,9 @@ def init_db():
     )
     """)
 
+    # =========================
     # 每日育兒知識
+    # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS daily_tips (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +109,7 @@ def upsert_user_settings(user_id, due_date=None, birth_date=None):
     conn = get_conn()
     c = conn.cursor()
 
-    # 確保 user_id 存在（⚠️ cron 能不能推播的關鍵）
+    # 確保 user_id 一定存在（cron 能推播的關鍵）
     c.execute(
         "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
         (user_id,)
@@ -145,6 +153,15 @@ def get_all_user_ids():
 
     conn.close()
     return rows
+
+# =========================
+# ⭐ 給 app.py 用的語意化介面（關鍵）
+# =========================
+def set_birth_date(user_id, birth_date):
+    upsert_user_settings(user_id, birth_date=birth_date)
+
+def set_due_date(user_id, due_date):
+    upsert_user_settings(user_id, due_date=due_date)
 
 # =========================
 # 每日育兒知識

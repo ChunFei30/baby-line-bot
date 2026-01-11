@@ -5,10 +5,15 @@ import random
 DB_NAME = "baby.db"
 
 # =========================
-# DB 連線
+# DB 連線（穩定版）
 # =========================
 def get_conn():
-    return sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(
+        DB_NAME,
+        check_same_thread=False
+    )
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # =========================
 # 初始化資料庫
@@ -31,7 +36,7 @@ def init_db():
     """)
 
     # =========================
-    # 使用者設定
+    # 使用者設定（唯一來源）
     # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -45,7 +50,7 @@ def init_db():
     """)
 
     # =========================
-    # 提醒（未來用）
+    # 提醒（保留未來用）
     # =========================
     c.execute("""
     CREATE TABLE IF NOT EXISTS reminders (
@@ -79,8 +84,12 @@ def save_record(user_id, record_type, value):
     c = conn.cursor()
 
     c.execute(
-        "INSERT INTO records (user_id, record_type, value, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, record_type, value, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        """
+        INSERT INTO records (user_id, record_type, value, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, record_type, value,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     )
 
     conn.commit()
@@ -103,25 +112,25 @@ def get_today_records_with_time(user_id):
     return rows
 
 # =========================
-# 使用者資料
+# 使用者資料（核心）
 # =========================
 def upsert_user_settings(user_id, due_date=None, birth_date=None):
     conn = get_conn()
     c = conn.cursor()
 
-    # 確保 user_id 一定存在（cron 能推播的關鍵）
+    # 確保 user_id 一定存在（cron / push 的關鍵）
     c.execute(
         "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
         (user_id,)
     )
 
-    if due_date:
+    if due_date is not None:
         c.execute(
             "UPDATE user_settings SET due_date=? WHERE user_id=?",
             (due_date, user_id)
         )
 
-    if birth_date:
+    if birth_date is not None:
         c.execute(
             "UPDATE user_settings SET birth_date=? WHERE user_id=?",
             (birth_date, user_id)
@@ -142,20 +151,23 @@ def get_user_settings(user_id):
 
     row = c.fetchone()
     conn.close()
-    return row if row else (None, None)
+
+    if row:
+        return row["due_date"], row["birth_date"]
+    return None, None
 
 def get_all_user_ids():
     conn = get_conn()
     c = conn.cursor()
 
     c.execute("SELECT user_id FROM user_settings")
-    rows = [r[0] for r in c.fetchall()]
+    rows = [r["user_id"] for r in c.fetchall()]
 
     conn.close()
     return rows
 
 # =========================
-# ⭐ 給 app.py 用的語意化介面（關鍵）
+# 給 app.py 用的語意化介面
 # =========================
 def set_birth_date(user_id, birth_date):
     upsert_user_settings(user_id, birth_date=birth_date)
@@ -177,4 +189,4 @@ def get_random_daily_tip():
     row = c.fetchone()
     conn.close()
 
-    return row[0] if row else "今天也請記得，你已經做得很好了 🤍"
+    return row["content"] if row else "今天也請記得，你已經做得很好了 🤍"

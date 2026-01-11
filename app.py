@@ -7,6 +7,10 @@ import os, re
 
 from db import *
 
+# ===== OpenAI =====
+from openai import OpenAI
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 app = Flask(__name__)
 
 # ===== LINE =====
@@ -64,7 +68,7 @@ def handle_follow(event):
     )
 
 # =========================
-# 今日總結（晚上用）
+# 今日總結
 # =========================
 def build_today_summary(user_id):
     records = get_today_records_with_time(user_id)
@@ -100,7 +104,7 @@ def build_today_summary(user_id):
     return text
 
 # =========================
-# 出生 / 倒數天數（早上用）
+# 天數
 # =========================
 def build_day_count(user_id):
     due, birth = get_user_settings(user_id)
@@ -117,7 +121,32 @@ def build_day_count(user_id):
     return "📅 今天也是值得被溫柔對待的一天"
 
 # =========================
-# 使用者手動訊息
+# ChatGPT 回覆
+# =========================
+def chatgpt_reply(user_text):
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一位溫柔、專業的育兒安撫師，"
+                        "用簡單、支持性的語氣回應家長的問題，"
+                        "避免醫療診斷，給予情緒支持與實用建議。"
+                    )
+                },
+                {"role": "user", "content": user_text}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print("ChatGPT error:", e)
+        return "我在這裡陪你 🤍 你已經很努力了。"
+
+# =========================
+# 使用者訊息
 # =========================
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
@@ -125,58 +154,40 @@ def handle_message(event):
     text = event.message.text.strip()
 
     upsert_user_settings(user_id)
-
     reply = None
 
-    # ===== 設定生日 =====
+    # 設定生日
     m_birth = re.match(r"設定生日\s*(\d{4}-\d{2}-\d{2})", text)
     if m_birth:
         birth = m_birth.group(1)
-        due, old_birth = get_user_settings(user_id)
-
+        old_due, old_birth = get_user_settings(user_id)
         set_birth_date(user_id, birth)
 
-        if old_birth == birth:
-            reply = f"ℹ️ 你已經設定過寶寶生日是 {birth} 囉 🤍"
-        else:
-            reply = (
-                f"🎂 已幫你設定寶寶生日為 {birth}\n\n"
-                "之後我會依月齡提醒你重要發展與照顧重點 💛"
-            )
+        reply = (
+            f"🎂 已幫你設定寶寶生日為 {birth}\n\n"
+            "之後我會依月齡提醒你重要發展與照顧重點 💛"
+        )
 
-    # ===== 設定預產期 =====
+    # 設定預產期
     m_due = re.match(r"設定預產期\s*(\d{4}-\d{2}-\d{2})", text)
     if reply is None and m_due:
         due = m_due.group(1)
-        old_due, birth = get_user_settings(user_id)
-
         set_due_date(user_id, due)
+        reply = (
+            f"🤰 已幫你設定預產期為 {due}\n\n"
+            "我會在孕期一路陪你準備迎接寶寶 🌙"
+        )
 
-        if old_due == due:
-            reply = f"ℹ️ 你已經設定過預產期是 {due} 囉 🤍"
-        else:
-            reply = (
-                f"🤰 已幫你設定預產期為 {due}\n\n"
-                "我會在孕期一路陪你準備迎接寶寶 🌙"
-            )
-
-    # ===== 快捷指令 =====
+    # 快捷指令
     if reply is None and text == "今天":
         reply = build_today_summary(user_id)
 
     if reply is None and text == "天數":
         reply = build_day_count(user_id)
 
-    # ===== 預設回覆（保證不已讀不回）=====
+    # ⭐ ChatGPT 接手（關鍵）
     if reply is None:
-        reply = (
-            "👋 我在這裡陪你 🤍\n\n"
-            "你可以輸入：\n"
-            "📅 設定生日 YYYY-MM-DD\n"
-            "🤰 設定預產期 YYYY-MM-DD\n"
-            "🍼 今天\n"
-            "📆 天數"
-        )
+        reply = chatgpt_reply(text)
 
     line_bot_api.reply_message(
         event.reply_token,
@@ -184,7 +195,7 @@ def handle_message(event):
     )
 
 # =========================
-# ⭐ CRON 主動推播（台灣時間）
+# CRON
 # =========================
 @app.route("/cron")
 def cron():
@@ -197,7 +208,6 @@ def cron():
 
     now = datetime.utcnow() + timedelta(hours=8)
     now_hour = now.hour
-    pushed = 0
 
     for user_id in users:
         try:
@@ -208,14 +218,12 @@ def cron():
                     f"📚 今日育兒小提醒：\n{get_random_daily_tip()}"
                 )
                 line_bot_api.push_message(user_id, TextSendMessage(text=msg))
-                pushed += 1
 
             elif now_hour == 21:
                 msg = build_today_summary(user_id)
                 line_bot_api.push_message(user_id, TextSendMessage(text=msg))
-                pushed += 1
 
         except Exception as e:
             print("push error:", e)
 
-    return f"cron ok {now_hour}, pushed {pushed}"
+    return "cron ok"
